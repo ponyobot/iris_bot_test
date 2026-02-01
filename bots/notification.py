@@ -1,8 +1,32 @@
 import requests
 import json
 import uuid
+from datetime import datetime, timedelta
 from iris import ChatContext
 from iris.decorators import *
+
+def format_time_kst(utc_time_str: str) -> str:
+    """UTC 시간을 KST로 변환하고 간단한 형식으로 반환합니다."""
+    try:
+        # ISO 8601 형식 파싱 (예: 2026-01-18T16:26:04.000Z)
+        utc_time = datetime.fromisoformat(utc_time_str.replace('Z', '+00:00'))
+        # KST = UTC + 9시간
+        kst_time = utc_time + timedelta(hours=9)
+        # YYYY-MM-DD HH:MM 형식으로 반환
+        return kst_time.strftime('%Y-%m-%d %H:%M')
+    except Exception as e:
+        print(f"[DEBUG] Error formatting time: {e}")
+        return utc_time_str
+
+def get_notice_type_label(object_type: str) -> str:
+    """공지 타입을 아이콘과 한글로 변환합니다."""
+    type_map = {
+        "TEXT": "📝 텍스트",
+        "SCHEDULE": "📅 일정",
+        "POLL": "📊 투표",
+        "QUIZ": "❓ 퀴즈"
+    }
+    return type_map.get(object_type, f"❔ {object_type}")
 
 def get_auth_from_iris(iris_endpoint: str):
     """Iris에서 AOT 토큰 정보를 가져옵니다."""
@@ -93,6 +117,245 @@ def get_post_id_from_room(chat: ChatContext):
         import traceback
         traceback.print_exc()
         return None
+
+def get_notices(chat: ChatContext):
+    """현재 방의 공지 목록을 가져옵니다."""
+    try:
+        session_info = get_auth_from_iris(chat.api.iris_endpoint)
+        if not session_info:
+            return None, "인증 정보를 가져올 수 없습니다."
+
+        link_id = get_link_id_from_room(chat)
+
+        if link_id:
+            url = f"https://open.kakao.com/moim/chats/{chat.room.id}/posts?link_id={link_id}"
+        else:
+            url = f"https://talkmoim-api.kakao.com/chats/{chat.room.id}/posts"
+
+        headers = {
+            "Authorization": session_info,
+            "accept-language": "ko",
+            "content-type": "application/x-www-form-urlencoded",
+            "A": "android/25.8.2/ko"
+        }
+
+        print(f"[DEBUG] get_notices URL: {url}")
+
+        response = requests.get(url, headers=headers)
+
+        print(f"[DEBUG] get_notices status: {response.status_code}")
+        print(f"[DEBUG] get_notices body: {response.text}")
+
+        if response.status_code == 200:
+            return response.json(), "성공"
+        else:
+            return None, f"HTTP 오류: {response.status_code}"
+
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Error in get_notices: {e}")
+        traceback.print_exc()
+        return None, str(e)
+
+# 더 이상 사용되지 않음 - open_chat_member 테이블을 직접 조회함
+# def _get_member_names(chat: ChatContext):
+#     """chat.room.members에서 {user_id: nickname} 맵 생성 (mentions.py 방식)."""
+#     member_names = {}
+#     try:
+#         if hasattr(chat.room, 'members') and chat.room.members:
+#             for member in chat.room.members:
+#                 if hasattr(member, 'id') and hasattr(member, 'name'):
+#                     member_names[member.id] = member.name
+#     except Exception as e:
+#         print(f"[DEBUG] _get_member_names error: {e}")
+#     return member_names
+
+
+def get_notices_command(chat: ChatContext):
+    """!공지목록 명령어 - 현재 방의 공지 목록을 요약 출력합니다."""
+    try:
+        print(f"[DEBUG] get_notices_command called")
+
+        notices, message = get_notices(chat)
+        if notices is None:
+            chat.reply(f"공지 목록을 가져올 수 없습니다.\n사유: {message}")
+            return
+
+        if isinstance(notices, dict):
+            notices = notices.get("posts", [])
+
+        if not notices:
+            chat.reply("현재 방에 공지가 없습니다.")
+            return
+
+        # open_chat_member 테이블에서 닉네임 맵 생성
+        member_names = {}
+        try:
+            query = "SELECT * FROM open_chat_member"
+            result = chat.api.query(query=query)
+            print(f"[DEBUG] open_chat_member query result count: {len(result) if result else 0}")
+            for row in result:
+                user_id = row.get("user_id")
+                nickname = row.get("nickname")
+                if user_id and nickname:
+                    member_names[user_id] = nickname
+            print(f"[DEBUG] member_names map size: {len(member_names)}")
+        except Exception as e:
+            print(f"[DEBUG] Error getting nicknames from open_chat_member: {e}")
+
+        result_lines = ["📌 공지 목록"]
+        for i, notice in enumerate(notices):
+            post_id = notice.get("id", "unknown")
+            owner_id = str(notice.get("owner_id"))  # 문자열로 변환
+            print(f"[DEBUG] Notice {i+1} - owner_id from API: {owner_id} (type: {type(notice.get('owner_id'))})")
+            author = member_names.get(owner_id, owner_id)
+            print(f"[DEBUG] Notice {i+1} - author found: {author}")
+            created_at = format_time_kst(notice.get("created_at", ""))
+            
+            # 타입과 고정 여부
+            object_type = notice.get("object_type", "UNKNOWN")
+            type_label = get_notice_type_label(object_type)
+            is_notice = notice.get("notice", False)
+            notice_badge = "📌 공지" if is_notice else "📄 일반"
+            
+            result_lines.append(f"\n{i + 1}. {author}\n📄 {post_id}\n🏷️ {type_label} | {notice_badge}\n🕐 {created_at}")
+
+        chat.reply("\n".join(result_lines))
+
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Exception in get_notices_command: {e}")
+        traceback.print_exc()
+        chat.reply("공지 목록 조회 중 오류가 발생했습니다.")
+
+@has_param
+def get_notice_detail_command(chat: ChatContext):
+    """!공지확인 명령어 - 특정 공지의 내용을 확인합니다."""
+    try:
+        print(f"[DEBUG] get_notice_detail_command called")
+
+        post_id = chat.message.param.strip()
+
+        notices, message = get_notices(chat)
+        if notices is None:
+            chat.reply(f"공지를 가져올 수 없습니다.\n사유: {message}")
+            return
+
+        if isinstance(notices, dict):
+            notices = notices.get("posts", [])
+
+        # 해당 post_id 공지 찾기
+        target = None
+        for notice in notices:
+            if notice.get("id") == post_id:
+                target = notice
+                break
+
+        if not target:
+            chat.reply(f"'{post_id}' 공지를 찾을 수 없습니다.")
+            return
+
+        # open_chat_member 테이블에서 닉네임 가져오기
+        owner_id = str(target.get("owner_id"))  # 문자열로 변환
+        print(f"[DEBUG] owner_id from API: {owner_id}")
+        author = owner_id
+        
+        try:
+            query = "SELECT * FROM open_chat_member WHERE user_id = ?"
+            result = chat.api.query(query=query, bind=[owner_id])
+            print(f"[DEBUG] open_chat_member query result: {result}")
+            
+            if result and len(result) > 0 and result[0].get("nickname"):
+                author = result[0].get("nickname")
+                print(f"[DEBUG] Found nickname: {author}")
+            else:
+                print(f"[DEBUG] No nickname found for user_id={owner_id}")
+        except Exception as e:
+            print(f"[DEBUG] Error getting nickname from open_chat_member: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        created_at = format_time_kst(target.get("created_at", ""))
+
+        # 타입별 content 파싱
+        object_type = target.get("object_type", "TEXT")
+        type_label = get_notice_type_label(object_type)
+        content = ""
+        
+        try:
+            if object_type == "TEXT":
+                # 텍스트 공지
+                content_list = json.loads(target.get("content", "[]"))
+                content = content_list[0].get("text", "")
+                
+            elif object_type == "SCHEDULE":
+                # 일정
+                schedule = target.get("schedule", {})
+                subject = schedule.get("subject", "")
+                start_at = format_time_kst(schedule.get("start_at", ""))
+                end_at = format_time_kst(schedule.get("end_at", ""))
+                all_day = schedule.get("all_day", False)
+                
+                content = f"📅 일정: {subject}\n"
+                if all_day:
+                    content += f"⏰ 종일"
+                else:
+                    content += f"⏰ {start_at} ~ {end_at}"
+                    
+            elif object_type == "POLL":
+                # 투표
+                poll = target.get("poll", {})
+                poll_details = poll.get("poll_details", [])
+                if poll_details:
+                    detail = poll_details[0]
+                    subject = detail.get("subject", "")
+                    items = detail.get("items", [])
+                    closed = poll.get("closed", False)
+                    closed_at = format_time_kst(poll.get("closed_at", ""))
+                    
+                    content = f"📊 투표: {subject}\n"
+                    content += f"상태: {'종료' if closed else '진행중'}\n"
+                    if not closed:
+                        content += f"마감: {closed_at}\n"
+                    content += "\n선택지:\n"
+                    for idx, item in enumerate(items, 1):
+                        title = item.get("title", "")
+                        user_count = item.get("user_count", 0)
+                        content += f"{idx}. {title} ({user_count}표)\n"
+                        
+            elif object_type == "QUIZ":
+                # 퀴즈
+                quiz = target.get("quiz", {})
+                quiz_details = quiz.get("quiz_details", [])
+                if quiz_details:
+                    detail = quiz_details[0]
+                    subject = detail.get("subject", "")
+                    items = detail.get("items", [])
+                    closed = quiz.get("closed", False)
+                    time_limit = quiz.get("time_limit", 0)
+                    
+                    content = f"❓ 퀴즈: {subject}\n"
+                    content += f"상태: {'종료' if closed else '진행중'}\n"
+                    content += f"제한시간: {time_limit}초\n"
+                    content += "\n선택지:\n"
+                    for idx, item in enumerate(items, 1):
+                        title = item.get("title", "")
+                        user_count = item.get("user_count", 0)
+                        content += f"{idx}. {title} ({user_count}명)\n"
+        except Exception as e:
+            print(f"[DEBUG] Error parsing content: {e}")
+            import traceback
+            traceback.print_exc()
+            content = "(내용을 불러올 수 없습니다)"
+
+        ALLSEE = '\u200b' * 500
+        chat.reply(f"{ALLSEE}📌 공지\n🏷️ {type_label}\n✍️ {author}\n🕐 {created_at}\n\n{content}")
+
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Exception in get_notice_detail_command: {e}")
+        traceback.print_exc()
+        chat.reply("공지 확인 중 오류가 발생했습니다.")
 
 def share_notice(chat: ChatContext, post_id: str, session_info: str, link_id: str = None):
     """공지를 공유합니다."""
