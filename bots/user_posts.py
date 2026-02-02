@@ -57,7 +57,7 @@ def format_timestamp(timestamp: int) -> str:
     except:
         return str(timestamp)
 
-def get_user_posts_by_profile_link_id(profile_link_id: str, last_post_id: int = 0, count: int = 20, session_info: str = None):
+def get_user_posts_by_profile_link_id(profile_link_id: str, last_post_id: int = 0, count: int = 100, session_info: str = None):
     """profile_link_id로 유저 포스트를 가져옵니다."""
     try:
         url = f"https://open.kakao.com/profile/{profile_link_id}/posts/all?lastPostId={last_post_id}&count={count}"
@@ -204,9 +204,14 @@ def get_user_posts_command(chat: ChatContext):
             
             # 이미지 첨부파일이 있으면 표시
             if post_datas:
-                result_lines.append("attachment:")
+                result_lines.append("📎 첨부 이미지:")
                 for idx, data in enumerate(post_datas, 1):
-                    result_lines.append(f"[{idx}]")
+                    image_paths = data.get("imagePaths", {})
+                    original_url = image_paths.get("originalImagePath", "")
+                    if original_url:
+                        result_lines.append(f"  [{idx}] {original_url}")
+                    else:
+                        result_lines.append(f"  [{idx}] (URL 없음)")
             
             if scrap_title:
                 result_lines.append(f"🔗 {scrap_title}")
