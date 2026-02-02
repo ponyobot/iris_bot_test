@@ -20,6 +20,7 @@ from bots.mentions import mention_user, mention_new_member, mention_self_and_bot
 from bots.notification import share_notice_command, share_current_notice, set_notice_command, delete_notice_command, change_notice_command, get_notices_command, get_notice_detail_command
 from bots.kakao_reaction import react_command
 from bots.em import emoticon_command
+from bots.user_posts import get_user_posts_command, get_replied_user_posts_command
 
 iris_url = sys.argv[1]
 bot = Bot(iris_url)
@@ -66,6 +67,12 @@ def on_message(chat: ChatContext):
             case "!react":
                 react_command(chat)
 
+            case "!유저포스트":
+                get_user_posts_command(chat)
+            
+            case "!포스트목록":
+                get_replied_user_posts_command(chat)
+                
     except Exception as e :
         print(e)
 
