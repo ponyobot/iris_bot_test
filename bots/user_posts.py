@@ -229,6 +229,102 @@ def get_user_posts_command(chat: ChatContext):
         traceback.print_exc()
         chat.reply("유저 포스트 조회 중 오류가 발생했습니다.")
 
+@has_param
+def get_posts_by_link_id_command(chat: ChatContext):
+    """!포스트 명령어 - profile_link_id로 유저의 포스트 목록을 가져옵니다."""
+    try:
+        print(f"[DEBUG] get_posts_by_link_id_command called")
+        
+        # 파라미터에서 profile_link_id 추출
+        profile_link_id = chat.message.param.strip()
+        
+        if not profile_link_id:
+            chat.reply("사용법: !포스트 <profile_link_id>")
+            return
+        
+        print(f"[DEBUG] Using profile_link_id: {profile_link_id}")
+        
+        # Iris에서 인증 정보 가져오기
+        session_info = get_auth_from_iris(chat.api.iris_endpoint)
+        
+        if not session_info:
+            chat.reply("인증 정보를 가져올 수 없습니다.")
+            return
+        
+        # 포스트 가져오기
+        posts, message = get_user_posts_by_profile_link_id(profile_link_id, session_info=session_info)
+        
+        if posts is None:
+            chat.reply(f"포스트를 가져올 수 없습니다.\n사유: {message}")
+            return
+        
+        # 포스트 목록 정리
+        post_list = posts.get("posts", [])
+        
+        if not post_list:
+            chat.reply("포스트가 없습니다.")
+            return
+        
+        # 결과 출력
+        ALLSEE = '\u200b' * 500
+        result_lines = [f"📝 포스트 목록 ({len(post_list)}개){ALLSEE}\n"]
+        
+        # 전체 포스트 표시
+        for i, post in enumerate(post_list):
+            post_id = post.get("id", "unknown")
+            
+            # postDescription에서 내용 추출
+            post_desc = post.get("postDescription", {})
+            content_text = post_desc.get("text", "")
+            
+            # postDatas에서 이미지 첨부파일 정보 추출
+            post_datas = post.get("postDatas", [])
+            
+            # 스크랩 데이터가 있으면 추가
+            scrap_data = post.get("scrapData", {})
+            scrap_title = scrap_data.get("title", "")
+            scrap_url = scrap_data.get("url", "")
+            
+            # 날짜 변환
+            timestamp = post.get("date", 0)
+            created_at = format_timestamp(timestamp)
+            
+            # 포스트 URL
+            post_url = post.get("postUrl", "")
+            
+            result_lines.append(
+                f"{i + 1}. 📄 ID: {post_id}\n"
+                f"📅 {created_at}\n"
+                f"💬 {content_text[:50]}{'...' if len(content_text) > 50 else ''}"
+            )
+            
+            # 이미지 첨부파일이 있으면 표시
+            if post_datas:
+                result_lines.append("📎 첨부 이미지:")
+                for idx, data in enumerate(post_datas, 1):
+                    image_paths = data.get("imagePaths", {})
+                    original_url = image_paths.get("originalImagePath", "")
+                    if original_url:
+                        result_lines.append(f"  [{idx}] {original_url}")
+                    else:
+                        result_lines.append(f"  [{idx}] (URL 없음)")
+            
+            if scrap_title:
+                result_lines.append(f"🔗 {scrap_title}")
+            
+            if post_url:
+                result_lines.append(f"🌐 {post_url}")
+            
+            result_lines.append("")  # 빈 줄
+        
+        chat.reply("\n".join(result_lines))
+        
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Exception in get_posts_by_link_id_command: {e}")
+        traceback.print_exc()
+        chat.reply("포스트 조회 중 오류가 발생했습니다.")
+
 @is_reply
 def debug_user_info(chat: ChatContext):
     """!유저정보 - 답장한 유저의 DB 정보를 출력합니다."""

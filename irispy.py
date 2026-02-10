@@ -16,11 +16,11 @@ from iris.kakaolink import IrisLink
 from bots.detect_nickname_change import detect_nickname_change
 import sys, threading
 
-from bots.mentions import mention_user, mention_new_member, mention_self_and_bot, mention_room_master
+from bots.mentions import mention_user, mention_new_member, mention_room_master
 from bots.notification import share_notice_command, share_current_notice, set_notice_command, delete_notice_command, change_notice_command, get_notices_command, get_notice_detail_command
 from bots.kakao_reaction import react_command
 from bots.em import emoticon_command
-from bots.user_posts import get_user_posts_command
+from bots.user_posts import get_user_posts_command, get_posts_by_link_id_command
 
 iris_url = sys.argv[1]
 bot = Bot(iris_url)
@@ -33,9 +33,6 @@ def on_message(chat: ChatContext):
 
             case "!멘션":
                 mention_user(chat)
-            
-            #case "!멘션1":
-            #    mention_self_and_bot(chat)
             
             case "!방장":
                 mention_room_master(chat)
@@ -69,6 +66,9 @@ def on_message(chat: ChatContext):
 
             case "!유저포스트":
                 get_user_posts_command(chat)
+
+            case "!포스트":
+                get_posts_by_link_id_command(chat)
                 
     except Exception as e :
         print(e)

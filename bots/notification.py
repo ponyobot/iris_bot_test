@@ -157,20 +157,6 @@ def get_notices(chat: ChatContext):
         traceback.print_exc()
         return None, str(e)
 
-# 더 이상 사용되지 않음 - open_chat_member 테이블을 직접 조회함
-# def _get_member_names(chat: ChatContext):
-#     """chat.room.members에서 {user_id: nickname} 맵 생성 (mentions.py 방식)."""
-#     member_names = {}
-#     try:
-#         if hasattr(chat.room, 'members') and chat.room.members:
-#             for member in chat.room.members:
-#                 if hasattr(member, 'id') and hasattr(member, 'name'):
-#                     member_names[member.id] = member.name
-#     except Exception as e:
-#         print(f"[DEBUG] _get_member_names error: {e}")
-#     return member_names
-
-
 def get_notices_command(chat: ChatContext):
     """!공지목록 명령어 - 현재 방의 공지 목록을 요약 출력합니다."""
     try:
@@ -206,7 +192,7 @@ def get_notices_command(chat: ChatContext):
         result_lines = ["📌 공지 목록"]
         for i, notice in enumerate(notices):
             post_id = notice.get("id", "unknown")
-            owner_id = str(notice.get("owner_id"))  # 문자열로 변환
+            owner_id = str(notice.get("owner_id"))
             print(f"[DEBUG] Notice {i+1} - owner_id from API: {owner_id} (type: {type(notice.get('owner_id'))})")
             author = member_names.get(owner_id, owner_id)
             print(f"[DEBUG] Notice {i+1} - author found: {author}")
@@ -256,7 +242,7 @@ def get_notice_detail_command(chat: ChatContext):
             return
 
         # open_chat_member 테이블에서 닉네임 가져오기
-        owner_id = str(target.get("owner_id"))  # 문자열로 변환
+        owner_id = str(target.get("owner_id"))
         print(f"[DEBUG] owner_id from API: {owner_id}")
         author = owner_id
         
@@ -368,7 +354,6 @@ def share_notice(chat: ChatContext, post_id: str, session_info: str, link_id: st
             url = f"https://talkmoim-api.kakao.com/posts/{post_id}/share"
             print(f"[DEBUG] Using regular chat URL")
         
-        # 더 완전한 헤더 설정
         headers = {
             "content-length": "0",
             "accept-encoding": "gzip",
@@ -386,12 +371,10 @@ def share_notice(chat: ChatContext, post_id: str, session_info: str, link_id: st
         print(f"[DEBUG] Share response status: {response.status_code}")
         print(f"[DEBUG] Share response body: {response.text}")
         
-        # HTTP 상태 코드 체크
         if response.status_code != 200:
             print(f"[ERROR] HTTP error: {response.status_code}")
             return False, f"HTTP 오류: {response.status_code}"
         
-        # 응답 본문의 status 필드 체크
         try:
             result = response.json()
             status = result.get("status")
@@ -411,7 +394,6 @@ def share_notice(chat: ChatContext, post_id: str, session_info: str, link_id: st
             return True, "성공"
             
         except json.JSONDecodeError:
-            # JSON 파싱 실패 시에도 HTTP 200이면 성공으로 간주
             print("[SUCCESS] Notice shared (non-JSON response)")
             return True, "성공"
             
@@ -427,7 +409,6 @@ def share_notice_command(chat: ChatContext):
     try:
         print(f"[DEBUG] share_notice_command called")
         
-        # 파라미터로 post_id 받기
         post_id = chat.message.param.strip()
         
         if not post_id:
@@ -436,17 +417,14 @@ def share_notice_command(chat: ChatContext):
         
         print(f"[DEBUG] Post ID from param: {post_id}")
         
-        # Iris에서 인증 정보 가져오기
         session_info = get_auth_from_iris(chat.api.iris_endpoint)
         
         if not session_info:
             chat.reply("인증 정보를 가져올 수 없습니다.")
             return
         
-        # 오픈채팅방이면 link_id 가져오기
         link_id = get_link_id_from_room(chat)
         
-        # 공지 공유
         success, message = share_notice(chat, post_id, session_info, link_id)
         
         if success:
@@ -465,7 +443,6 @@ def share_current_notice(chat: ChatContext):
     try:
         print(f"[DEBUG] share_current_notice called")
         
-        # moim_meta에서 post_id 가져오기
         post_id = get_post_id_from_room(chat)
         
         if not post_id:
@@ -474,17 +451,14 @@ def share_current_notice(chat: ChatContext):
         
         print(f"[DEBUG] Current room post_id: {post_id}")
         
-        # Iris에서 인증 정보 가져오기
         session_info = get_auth_from_iris(chat.api.iris_endpoint)
         
         if not session_info:
             chat.reply("인증 정보를 가져올 수 없습니다.")
             return
         
-        # 오픈채팅방이면 link_id 가져오기
         link_id = get_link_id_from_room(chat)
         
-        # 공지 공유
         success, message = share_notice(chat, post_id, session_info, link_id)
         
         if success:
@@ -503,10 +477,8 @@ def set_notice(chat: ChatContext, text: str, session_info: str, link_id: str = N
     try:
         import urllib.parse
         
-        # content JSON 구성
         content = json.dumps([{"text": text, "type": "text"}], ensure_ascii=False)
         
-        # 오픈채팅 여부에 따라 URL과 body 변경
         if link_id:
             url = f"https://open.kakao.com/moim/chats/{chat.room.id}/posts?link_id={link_id}"
             body = f"content={urllib.parse.quote(content)}&object_type=TEXT&notice=true&link_id={link_id}"
@@ -535,7 +507,6 @@ def set_notice(chat: ChatContext, text: str, session_info: str, link_id: str = N
                 result = response.json()
                 status = result.get("status")
                 
-                # status 필드가 음수면 에러
                 if status is not None and status < 0:
                     error_messages = {
                         -4046: "등록 권한이 없거나 이미 처리된 요청입니다",
@@ -573,17 +544,14 @@ def set_notice_command(chat: ChatContext):
             chat.reply("사용법: !공지등록 <내용>")
             return
         
-        # Iris에서 인증 정보 가져오기
         session_info = get_auth_from_iris(chat.api.iris_endpoint)
         
         if not session_info:
             chat.reply("인증 정보를 가져올 수 없습니다.")
             return
         
-        # 오픈채팅방이면 link_id 가져오기
         link_id = get_link_id_from_room(chat)
         
-        # 공지 등록
         success, result = set_notice(chat, text, session_info, link_id)
         
         if success:
@@ -603,7 +571,6 @@ def set_notice_command(chat: ChatContext):
 def delete_notice(post_id: str, session_info: str, link_id: str = None):
     """공지를 삭제합니다."""
     try:
-        # 오픈채팅 여부에 따라 URL 변경
         if link_id:
             url = f"https://open.kakao.com/moim/posts/{post_id}?link_id={link_id}"
             print(f"[DEBUG] Using open chat URL with link_id: {link_id}")
@@ -628,7 +595,6 @@ def delete_notice(post_id: str, session_info: str, link_id: str = None):
                 result = response.json()
                 status = result.get("status")
                 
-                # status 필드가 음수면 에러
                 if status is not None and status < 0:
                     error_messages = {
                         -4046: "삭제 권한이 없거나 이미 삭제된 공지입니다",
@@ -666,17 +632,14 @@ def delete_notice_command(chat: ChatContext):
             chat.reply("사용법: !공지삭제 <post_id>")
             return
         
-        # Iris에서 인증 정보 가져오기
         session_info = get_auth_from_iris(chat.api.iris_endpoint)
         
         if not session_info:
             chat.reply("인증 정보를 가져올 수 없습니다.")
             return
         
-        # 오픈채팅방이면 link_id 가져오기
         link_id = get_link_id_from_room(chat)
         
-        # 공지 삭제
         success, message = delete_notice(post_id, session_info, link_id)
         
         if success:
@@ -695,10 +658,8 @@ def change_notice(post_id: str, text: str, session_info: str, link_id: str = Non
     try:
         import urllib.parse
         
-        # content JSON 구성
         content = json.dumps([{"text": text, "type": "text"}], ensure_ascii=False)
         
-        # 오픈채팅 여부에 따라 URL과 body 변경
         if link_id:
             url = f"https://open.kakao.com/moim/posts/{post_id}?link_id={link_id}"
             body = f"content={urllib.parse.quote(content)}&object_type=TEXT&notice=true&link_id={link_id}"
@@ -727,7 +688,6 @@ def change_notice(post_id: str, text: str, session_info: str, link_id: str = Non
                 result = response.json()
                 status = result.get("status")
                 
-                # status 필드가 음수면 에러
                 if status is not None and status < 0:
                     error_messages = {
                         -4046: "수정 권한이 없거나 이미 처리된 요청입니다",
@@ -768,17 +728,14 @@ def change_notice_command(chat: ChatContext):
         post_id = params[0].strip()
         text = params[1].strip()
         
-        # Iris에서 인증 정보 가져오기
         session_info = get_auth_from_iris(chat.api.iris_endpoint)
         
         if not session_info:
             chat.reply("인증 정보를 가져올 수 없습니다.")
             return
         
-        # 오픈채팅방이면 link_id 가져오기
         link_id = get_link_id_from_room(chat)
         
-        # 공지 수정
         success, message = change_notice(post_id, text, session_info, link_id)
         
         if success:
