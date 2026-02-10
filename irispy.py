@@ -16,7 +16,7 @@ from iris.kakaolink import IrisLink
 from bots.detect_nickname_change import detect_nickname_change
 import sys, threading
 
-from bots.mentions import mention_user, mention_new_member, mention_room_master
+from bots.mentions import mention_user, mention_new_member, mention_room_master, handle_member_event
 from bots.notification import share_notice_command, share_current_notice, set_notice_command, delete_notice_command, change_notice_command, get_notices_command, get_notice_detail_command
 from bots.kakao_reaction import react_command
 from bots.em import emoticon_command
@@ -88,22 +88,22 @@ def on_message(chat: ChatContext):
     except Exception as e :
         print(e)
 
-# 입장 멘션을 보낼 방 리스트
-WELCOME_ROOMS = [18472312239224835,18469145050793422]
+# 입장/퇴장/강퇴 멘션을 보낼 방 리스트
+MENTION_ROOMS = [18472312239224835, 18469145050793422]
 
-#입장감지
+# 입장감지
 @bot.on_event("new_member")
 def on_newmem(chat: ChatContext):
-    if chat.room.id in WELCOME_ROOMS:
-        mention_new_member(chat)
-    #chat.reply(f"Hello {chat.sender.name}")
+    if chat.room.id in MENTION_ROOMS:
+        # 메시지 파싱하여 처리
+        handle_member_event(chat)
 
-#퇴장감지
+# 퇴장감지
 @bot.on_event("del_member")
 def on_delmem(chat: ChatContext):
-    if chat.room.id in WELCOME_ROOMS:
-        mention_new_member(chat)
-    #chat.reply(f"Bye {chat.sender.name}")
+    if chat.room.id in MENTION_ROOMS:
+        # 메시지 파싱하여 처리
+        handle_member_event(chat)
 
 
 @bot.on_event("error")
