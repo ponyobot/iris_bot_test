@@ -15,8 +15,10 @@ from iris.kakaolink import IrisLink
 
 from bots.detect_nickname_change import detect_nickname_change
 import sys, threading
+import base64
+import requests
 
-from bots.mentions import mention_user, mention_new_member, mention_room_master, handle_member_event
+from bots.mentions import mention_user, mention_room_master, mention_user_in_thread
 from bots.notification import share_notice_command, share_current_notice, set_notice_command, delete_notice_command, change_notice_command, get_notices_command, get_notice_detail_command
 from bots.kakao_reaction import react_command
 from bots.em import emoticon_command
@@ -25,14 +27,49 @@ from bots.user_posts import get_user_posts_command, get_posts_by_link_id_command
 iris_url = sys.argv[1]
 bot = Bot(iris_url)
 
+
+def normalize_iris_endpoint(endpoint: str) -> str:
+    normalized = endpoint.strip()
+    if not normalized.startswith("http://") and not normalized.startswith("https://"):
+        normalized = f"http://{normalized}"
+    return normalized.rstrip("/")
+
+
+def send_audio_multiple_http(iris_endpoint: str, room_id: int, mp3_paths: list[str]):
+    base64_audio_data = []
+
+    for mp3_path in mp3_paths:
+        with open(mp3_path, "rb") as f:
+            base64_audio_data.append(base64.b64encode(f.read()).decode("utf-8"))
+
+    endpoint = normalize_iris_endpoint(iris_endpoint)
+
+    response = requests.post(
+        f"{endpoint}/reply",
+        json={
+            "type": "audio_multiple",
+            "room": str(room_id),
+            "data": base64_audio_data,
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
+
 @bot.on_event("message")
 @is_not_banned
 def on_message(chat: ChatContext):
     try:
         match chat.message.command:
 
+            case "!tt" | "!ttt" | "!프사" | "!프사링":
+                reply_photo(chat, kl)
+
             case "!멘션":
                 mention_user(chat)
+            
+            case "!멘션1":  # 스레드용 멘션
+                mention_user_in_thread(chat)
             
             case "!방장":
                 mention_room_master(chat)
@@ -73,6 +110,29 @@ def on_message(chat: ChatContext):
     except Exception as e :
         print(e)
 
+
+@bot.on_event("message")
+@is_not_banned
+def on_audio_test(chat: ChatContext):
+    if chat.message.command != "!mp3test":
+        return
+
+    try:
+        if not chat.message.param:
+            chat.reply("usage: !mp3test C:\\\\a.mp3|C:\\\\b.mp3")
+            return
+
+        mp3_paths = [path.strip().strip('"') for path in chat.message.param.split("|") if path.strip()]
+        if not mp3_paths:
+            chat.reply("mp3 path required")
+            return
+
+        chat.reply_audio(mp3_paths)
+        chat.reply(f"sent {len(mp3_paths)} audio file(s)")
+    except Exception as e:
+        chat.reply(f"mp3 send failed: {e}")
+        print(e)
+
 @bot.on_event("message")
 @is_not_banned
 def on_message(chat: ChatContext):
@@ -87,24 +147,6 @@ def on_message(chat: ChatContext):
             
     except Exception as e :
         print(e)
-
-# 입장/퇴장/강퇴 멘션을 보낼 방 리스트
-MENTION_ROOMS = [18472312239224835, 18469145050793422]
-
-# 입장감지
-@bot.on_event("new_member")
-def on_newmem(chat: ChatContext):
-    if chat.room.id in MENTION_ROOMS:
-        # 메시지 파싱하여 처리
-        handle_member_event(chat)
-
-# 퇴장감지
-@bot.on_event("del_member")
-def on_delmem(chat: ChatContext):
-    if chat.room.id in MENTION_ROOMS:
-        # 메시지 파싱하여 처리
-        handle_member_event(chat)
-
 
 @bot.on_event("error")
 def on_error(err: ErrorContext):
