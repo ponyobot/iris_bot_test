@@ -17,6 +17,9 @@ from bots.detect_nickname_change import detect_nickname_change
 import sys, threading
 import base64
 import requests
+import os
+import subprocess
+import tempfile
 
 from bots.mentions import mention_user, mention_room_master, mention_user_in_thread
 from bots.notification import share_notice_command, share_current_notice, set_notice_command, delete_notice_command, change_notice_command, get_notices_command, get_notice_detail_command
@@ -33,6 +36,51 @@ def normalize_iris_endpoint(endpoint: str) -> str:
     if not normalized.startswith("http://") and not normalized.startswith("https://"):
         normalized = f"http://{normalized}"
     return normalized.rstrip("/")
+
+def transcode_to_aac_320k(input_path: str) -> str:
+    try:
+        from imageio_ffmpeg import get_ffmpeg_exe
+        ffmpeg = get_ffmpeg_exe()
+    except Exception:
+        ffmpeg = None
+    if not ffmpeg:
+        raise RuntimeError("missing python package: pip install imageio-ffmpeg")
+
+    if not os.path.isfile(input_path):
+        raise FileNotFoundError(f"file not found: {input_path}")
+
+    fd, output_path = tempfile.mkstemp(prefix="iris_aac_", suffix=".m4a")
+    os.close(fd)
+
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-i",
+        input_path,
+        "-vn",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "320k",
+        output_path,
+    ]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        try:
+            os.remove(output_path)
+        except Exception:
+            pass
+        stderr = (result.stderr or "").strip().splitlines()
+        msg = stderr[-1] if stderr else "unknown ffmpeg error"
+        raise RuntimeError(f"ffmpeg transcode failed: {msg}")
+
+    return output_path
 
 
 def send_audio_multiple_http(iris_endpoint: str, room_id: int, mp3_paths: list[str]):
@@ -127,8 +175,19 @@ def on_audio_test(chat: ChatContext):
             chat.reply("mp3 path required")
             return
 
-        chat.reply_audio(mp3_paths)
-        chat.reply(f"sent {len(mp3_paths)} audio file(s)")
+        transcoded_files = []
+        try:
+            for path in mp3_paths:
+                transcoded_files.append(transcode_to_aac_320k(path))
+
+            chat.reply_audio(transcoded_files)
+            chat.reply(f"sent {len(transcoded_files)} audio file(s) as aac 320kbps")
+        finally:
+            for temp_file in transcoded_files:
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
     except Exception as e:
         chat.reply(f"mp3 send failed: {e}")
         print(e)

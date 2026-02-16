@@ -1,6 +1,6 @@
 from iris import ChatContext
 from iris.decorators import *
-from bots.talk_api import talk_write
+from bots.talk_api import talk_write_async
 
 
 def send_emoticon(chat: ChatContext, emoticon_number: int) -> bool:
@@ -19,7 +19,6 @@ def send_emoticon(chat: ChatContext, emoticon_number: int) -> bool:
         return False
 
     emot_filename = f"2212560.emot_{emoticon_number:03d}.png"
-    print(f"[em] Sending emoticon: {emot_filename}")
 
     attachment = {
         "type": "sticker/digital-item",
@@ -33,7 +32,7 @@ def send_emoticon(chat: ChatContext, emoticon_number: int) -> bool:
         "welcome": False,
     }
 
-    result = talk_write(
+    result = talk_write_async(
         iris_endpoint=chat.api.iris_endpoint,
         chat_id=chat.room.id,
         msg=" ",
@@ -41,13 +40,7 @@ def send_emoticon(chat: ChatContext, emoticon_number: int) -> bool:
         msg_type=12,  # 이모티콘 타입
     )
 
-    if result.get("result") is False:
-        print(f"[em] Failed to send emoticon: {result}")
-        chat.reply("이모티콘 전송에 실패했습니다.")
-        return False
-
-    print("[em] Emoticon sent successfully")
-    return True
+    return result
 
 
 @has_param
