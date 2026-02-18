@@ -1,4 +1,4 @@
-from iris import ChatContext, Bot
+﻿from iris import ChatContext, Bot
 from iris.bot.models import ErrorContext
 from bots.gemini import get_gemini
 from bots.pyeval import python_eval, real_eval
@@ -26,6 +26,8 @@ from bots.notification import share_notice_command, share_current_notice, set_no
 from bots.kakao_reaction import react_command
 from bots.em import emoticon_command
 from bots.user_posts import get_user_posts_command, get_posts_by_link_id_command
+from bots.kick_list import kick_list_command
+from bots.vote import vote_command
 
 iris_url = sys.argv[1]
 bot = Bot(iris_url)
@@ -154,6 +156,12 @@ def on_message(chat: ChatContext):
 
             case "!포스트":
                 get_posts_by_link_id_command(chat)
+
+            case "!강퇴목록":
+                kick_list_command(chat)
+            
+            case "!투표":
+                vote_command(chat)
                 
     except Exception as e :
         print(e)
