@@ -28,6 +28,7 @@ from bots.em import emoticon_command
 from bots.user_posts import get_user_posts_command, get_posts_by_link_id_command
 from bots.kick_list import kick_list_command
 from bots.vote import vote_command
+from bots.room_info import room_search_command
 
 iris_url = sys.argv[1]
 bot = Bot(iris_url)
@@ -162,6 +163,9 @@ def on_message(chat: ChatContext):
             
             case "!투표":
                 vote_command(chat)
+
+            case "!방검색":
+                room_search_command(chat)
                 
     except Exception as e :
         print(e)
